@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Describe the Pokémon</title>
+<meta name="description" content="A two-player guessing game: one person describes the Pokémon on screen, the other guesses its name.">
+<meta name="theme-color" content="#e8ecf1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f141a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23fff' stroke='%2317202a' stroke-width='3'/%3E%3Cpath d='M2 16a14 14 0 0 1 28 0z' fill='%23e3350d' stroke='%2317202a' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%23fff' stroke='%2317202a' stroke-width='3'/%3E%3C/svg%3E">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one phone-sized column; setup is a scrolling form, play is a full-height card with two big thumb buttons. */
+:root {
+  --bg: #e8ecf1;
+  --surface: #ffffff;
+  --fg: #17202a;
+  --muted: #586473;
+  --line: #c9d1db;
+  --accent: #e3350d;
+  --accent-fg: #ffffff;
+  --go: #16804a;
+  --go-fg: #ffffff;
+  --card: #f6f3ec; /* artwork is baked onto this colour by tools/build-data.ps1 */
+  --card-fg: #17202a;
+  --card-muted: #6b6457;
+  --font-display: "Bricolage Grotesque", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --surface: #18212b; --fg: #edf1f5; --muted: #95a2b1; --line: #2c3845;
+    --accent: #ff5a36; --accent-fg: #160805; --go: #3cc97d; --go-fg: #06180e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --surface: #18212b; --fg: #edf1f5; --muted: #95a2b1; --line: #2c3845;
+  --accent: #ff5a36; --accent-fg: #160805; --go: #3cc97d; --go-fg: #06180e;
+  color-scheme: dark;
+}
+
+/* Base reset (the claude.ai Artifact host adds the same; needed when served standalone). */
+*, *::before, *::after { box-sizing: border-box; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+.app {
+  box-sizing: border-box;
+  max-width: 30rem;
+  min-height: 100%;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+.screen { display: flex; flex-direction: column; gap: 1.25rem; flex: 1; }
+
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 2.1rem; line-height: 1.05; font-weight: 800; }
+h1 .ball { color: var(--accent); }
+h2 { font-size: 1.05rem; font-weight: 700; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 34ch; }
+.label { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible, input:focus-visible + .switch { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+/* ---------- Setup ---------- */
+.section { display: flex; flex-direction: column; gap: 0.75rem; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.quick { display: flex; gap: 0.25rem; }
+.quick button { font-size: 0.85rem; font-weight: 600; color: var(--accent); padding: 0.35rem 0.5rem; border-radius: 8px; }
+
+.gens { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.gen {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+  transition: border-color .12s, background-color .12s;
+}
+.gen .num { font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; line-height: 1.1; }
+.gen .region { font-size: 0.85rem; font-weight: 600; }
+.gen .count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gen[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.gen[aria-pressed="false"] .num, .gen[aria-pressed="false"] .region { color: var(--muted); }
+
+.toggle {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.toggle strong { font-weight: 700; }
+.toggle small { color: var(--muted); font-size: 0.85rem; }
+.switch { flex: none; width: 3rem; height: 1.75rem; border-radius: 999px; background: var(--line); position: relative; transition: background-color .15s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: calc(1.75rem - 6px); height: calc(1.75rem - 6px); border-radius: 50%; background: var(--surface); transition: transform .15s; }
+.toggle input:checked + .switch { background: var(--accent); }
+.toggle input:checked + .switch::after { transform: translateX(1.25rem); }
+
+.start-bar { margin-top: auto; display: flex; flex-direction: column; gap: 0.6rem; padding-top: 0.5rem; }
+.deck-size { text-align: center; color: var(--muted); font-size: 0.9rem; }
+.deck-size b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.big {
+  min-height: 3.6rem; padding: 0 1.25rem;
+  border-radius: var(--radius);
+  font-family: var(--font-display); font-size: 1.2rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  transition: transform .08s;
+}
+.big:active:not(:disabled) { transform: scale(0.98); }
+.primary { background: var(--accent); color: var(--accent-fg); }
+.go { background: var(--go); color: var(--go-fg); }
+.ghost { background: var(--surface); border: 2px solid var(--line); }
+.error { color: var(--accent); font-weight: 600; text-align: center; }
+
+/* ---------- Play ---------- */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.tally { display: flex; gap: 0.9rem; font-variant-numeric: tabular-nums; font-size: 0.9rem; color: var(--muted); }
+.tally b { color: var(--fg); font-size: 1.05rem; }
+.link { font-size: 0.9rem; font-weight: 600; color: var(--muted); padding: 0.4rem 0.5rem; border-radius: 8px; }
+
+.card {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem;
+  background: var(--card);
+  color: var(--card-fg);
+  border-radius: 22px;
+  padding: 1rem 1rem 1.4rem;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.06), 0 10px 30px -12px rgb(0 0 0 / 0.35);
+  min-height: 0;
+}
+.card .art { width: min(100%, 44vh, 22rem); aspect-ratio: 1; max-width: 100%; display: block; }
+.card .dex { font-family: var(--font-mono); font-size: 0.85rem; color: var(--card-muted); letter-spacing: 0.04em; }
+.card .name {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(2rem, 10vw, 3rem); line-height: 1; text-align: center;
+  overflow-wrap: anywhere;
+}
+.card.enter { animation: deal .22s ease-out; }
+@keyframes deal { from { transform: translateY(10px) scale(0.98); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+.actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 0.6rem; }
+.actions .big { min-height: 4.5rem; }
+.undo-row { display: flex; justify-content: center; min-height: 2rem; }
+
+/* ---------- Summary ---------- */
+.score { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.stat { background: var(--surface); border: 2px solid var(--line); border-radius: 12px; padding: 0.8rem 1rem; }
+.stat b { display: block; font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat.good b { color: var(--go); }
+.skipped-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+.skipped-list li { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.9rem; }
+.skipped-list .n { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); margin-right: 0.3rem; }
+
+.legal { font-size: 0.75rem; color: var(--muted); text-align: center; text-wrap: balance; }
+.legal a { color: inherit; }
+
+.loading { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; color: var(--muted); }
+.spinner { width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Setup -->
+  <section class="screen" id="setup">
+    <header class="section" style="gap:.5rem">
+      <h1>Describe the Pokémon<span class="ball">.</span></h1>
+      <p class="lede">One player holds the phone and describes what the Pokémon looks like. The other guesses its name.</p>
+    </header>
+
+    <div class="section">
+      <div class="section-head">
+        <h2>Generations</h2>
+        <div class="quick">
+          <button type="button" id="gen-all">All</button>
+          <button type="button" id="gen-none">None</button>
+        </div>
+      </div>
+      <div class="gens" id="gens"></div>
+    </div>
+
+    <div class="section">
+      <h2>Evolutions</h2>
+      <label class="toggle" for="include-pre">
+        <span class="text">
+          <strong>Include Pokémon that still evolve</strong>
+          <small id="pre-hint">Turn off to keep only final forms and Pokémon that never evolve, like Venusaur and Tauros but not Bulbasaur or Ivysaur.</small>
+        </span>
+        <input type="checkbox" id="include-pre" checked>
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+    </div>
+
+    <div class="start-bar">
+      <p class="deck-size" id="deck-size">&nbsp;</p>
+      <p class="error" id="setup-error" hidden></p>
+      <button type="button" class="big primary" id="start">Start game</button>
+    </div>
+    <p class="legal">Unofficial fan project, not affiliated with or endorsed by Nintendo, Game Freak or The Pokémon Company. Pokémon names and artwork © their respective owners. Data from <a href="https://pokeapi.co" target="_blank" rel="noopener">PokeAPI</a>.</p>
+  </section>
+
+  <!-- Loading -->
+  <section class="screen" id="loading" hidden>
+    <div class="loading">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loading-text">Loading artwork…</p>
+    </div>
+  </section>
+
+  <!-- Play -->
+  <section class="screen" id="play" hidden>
+    <div class="topbar">
+      <div class="tally" aria-live="polite">
+        <span><b id="t-guessed">0</b> guessed</span>
+        <span><b id="t-skipped">0</b> skipped</span>
+        <span><b id="t-left">0</b> left</span>
+      </div>
+      <button type="button" class="link" id="finish">Finish</button>
+    </div>
+    <article class="card" id="card">
+      <img class="art" id="art" alt="">
+      <p class="dex" id="dex"></p>
+      <p class="name" id="name"></p>
+    </article>
+    <div class="actions">
+      <button type="button" class="big ghost" id="skip">Skip</button>
+      <button type="button" class="big go" id="guessed">Guessed it!</button>
+    </div>
+    <div class="undo-row"><button type="button" class="link" id="undo" hidden>Undo last</button></div>
+  </section>
+
+  <!-- Summary -->
+  <section class="screen" id="summary" hidden>
+    <header class="section" style="gap:.4rem">
+      <span class="label" id="sum-label">Game over</span>
+      <h1 id="sum-title">Nice describing.</h1>
+    </header>
+    <div class="score">
+      <div class="stat good"><b id="s-guessed">0</b>guessed</div>
+      <div class="stat"><b id="s-skipped">0</b>skipped</div>
+    </div>
+    <div class="section" id="skipped-wrap">
+      <h2>Skipped Pokémon</h2>
+      <ul class="skipped-list" id="skipped-list"></ul>
+    </div>
+    <div class="start-bar">
+      <button type="button" class="big primary" id="again">Play again</button>
+      <button type="button" class="big ghost" id="to-setup">Change settings</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const GENS = [
+  { n: 1, roman: "I", region: "Kanto" },
+  { n: 2, roman: "II", region: "Johto" },
+  { n: 3, roman: "III", region: "Hoenn" },
+  { n: 4, roman: "IV", region: "Sinnoh" },
+  { n: 5, roman: "V", region: "Unova" },
+  { n: 6, roman: "VI", region: "Kalos" },
+  { n: 7, roman: "VII", region: "Alola" },
+  { n: 8, roman: "VIII", region: "Galar" },
+  { n: 9, roman: "IX", region: "Paldea" },
+];
+const STORE_KEY = "describe-pokemon:settings";
+const $ = (id) => document.getElementById(id);
+
+let species = [];            // [{id, name, gen, pre}]
+const byId = new Map();
+const art = new Map();       // id -> data URI
+const loadedGens = new Set();
+
+let settings = { gens: GENS.map(g => g.n), includePre: true };
+let game = null;             // { deck: [id], results: [{id, r: "g"|"s"}] }
+let screen = "setup";
+let wakeLock = null;
+
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s && Array.isArray(s.gens)) settings = { gens: s.gens, includePre: s.includePre !== false };
+  } catch {}
+}
+function saveSettings() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch {}
+}
+
+function eligible(s) { return settings.gens.includes(s.gen) && (settings.includePre || !s.pre); }
+
+function show(name) {
+  screen = name;
+  for (const id of ["setup", "loading", "play", "summary"]) $(id).hidden = id !== name;
+  if (name === "play") requestWakeLock(); else releaseWakeLock();
+  window.scrollTo(0, 0);
+}
+
+/* ---------- Setup ---------- */
+function renderSetup() {
+  const gensEl = $("gens");
+  gensEl.innerHTML = "";
+  for (const g of GENS) {
+    const count = species.filter(s => s.gen === g.n && (settings.includePre || !s.pre)).length;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "gen";
+    b.id = "gen-" + g.n;
+    b.setAttribute("aria-pressed", settings.gens.includes(g.n));
+    b.innerHTML = `<span class="num">Gen ${g.roman}</span><span class="region">${g.region}</span><span class="count">${species.length ? count + " Pokémon" : "&nbsp;"}</span>`;
+    b.onclick = () => {
+      settings.gens = settings.gens.includes(g.n) ? settings.gens.filter(n => n !== g.n) : [...settings.gens, g.n].sort((a, b) => a - b);
+      saveSettings(); renderSetup();
+    };
+    gensEl.appendChild(b);
+  }
+  $("include-pre").checked = settings.includePre;
+  const total = species.filter(eligible).length;
+  $("deck-size").innerHTML = species.length
+    ? (total ? `<b>${total}</b> Pokémon in the deck` : "Pick at least one generation")
+    : "Loading Pokémon list…";
+  $("start").disabled = !total;
+}
+
+$("gen-all").onclick = () => { settings.gens = GENS.map(g => g.n); saveSettings(); renderSetup(); };
+$("gen-none").onclick = () => { settings.gens = []; saveSettings(); renderSetup(); };
+$("include-pre").onchange = (e) => { settings.includePre = e.target.checked; saveSettings(); renderSetup(); };
+
+/* ---------- Data ---------- */
+async function fetchJson(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  return res.json();
+}
+
+async function loadSpecies() {
+  try {
+    species = await fetchJson("data/species.json");
+    for (const s of species) byId.set(s.id, s);
+    $("setup-error").hidden = true;
+  } catch (err) {
+    $("setup-error").textContent = "Couldn't load the Pokémon list. Check your connection and reload the page.";
+    $("setup-error").hidden = false;
+  }
+  renderSetup();
+}
+
+async function loadArt(gens) {
+  const missing = gens.filter(n => !loadedGens.has(n));
+  let done = 0;
+  const label = () => $("loading-text").textContent = `Loading artwork… ${done} of ${missing.length} generations`;
+  if (missing.length) label();
+  await Promise.all(missing.map(async n => {
+    const data = await fetchJson(`data/art-gen${n}.json`);
+    for (const [id, uri] of Object.entries(data)) art.set(Number(id), uri);
+    loadedGens.add(n);
+    done++; label();
+  }));
+}
+
+/* ---------- Game ---------- */
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+async function startGame(existing) {
+  show("loading");
+  try {
+    await loadArt(settings.gens);
+  } catch (err) {
+    show("setup");
+    $("setup-error").textContent = "Couldn't load the artwork. Check your connection and try again.";
+    $("setup-error").hidden = false;
+    return;
+  }
+  $("setup-error").hidden = true;
+  game = existing || { deck: shuffle(species.filter(eligible).map(s => s.id)), results: [] };
+  show("play");
+  renderCard();
+}
+
+function current() { return game.deck[game.results.length]; }
+
+function renderCard() {
+  const id = current();
+  if (id === undefined) return showSummary(true);
+  const s = byId.get(id);
+  const g = GENS[s.gen - 1];
+  $("art").src = art.get(id) || "";
+  $("art").alt = `Official artwork of ${s.name}`;
+  $("dex").textContent = `No. ${String(id).padStart(4, "0")} · ${g.region}`;
+  $("name").textContent = s.name;
+  const guessed = game.results.filter(r => r.r === "g").length;
+  $("t-guessed").textContent = guessed;
+  $("t-skipped").textContent = game.results.length - guessed;
+  $("t-left").textContent = game.deck.length - game.results.length;
+  $("undo").hidden = !game.results.length;
+  const card = $("card");
+  card.classList.remove("enter"); void card.offsetWidth; card.classList.add("enter");
+}
+
+function answer(r) {
+  if (current() === undefined) return;
+  game.results.push({ id: current(), r });
+  renderCard();
+}
+$("guessed").onclick = () => answer("g");
+$("skip").onclick = () => answer("s");
+$("undo").onclick = () => { game.results.pop(); renderCard(); };
+$("finish").onclick = () => showSummary(false);
+
+function showSummary(deckDone) {
+  const guessed = game.results.filter(r => r.r === "g");
+  const skipped = game.results.filter(r => r.r === "s");
+  $("sum-label").textContent = deckDone ? "Deck finished" : `Game over · ${game.results.length} played`;
+  const rate = game.results.length ? guessed.length / game.results.length : 0;
+  $("sum-title").textContent = !game.results.length ? "No cards played."
+    : rate >= 0.8 ? "Brilliant describing."
+    : rate >= 0.5 ? "Nice teamwork."
+    : "Some tricky ones there.";
+  $("s-guessed").textContent = guessed.length;
+  $("s-skipped").textContent = skipped.length;
+  const list = $("skipped-list");
+  list.innerHTML = "";
+  for (const { id } of skipped) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="n">#${id}</span>`;
+    li.append(byId.get(id).name);
+    list.appendChild(li);
+  }
+  $("skipped-wrap").hidden = !skipped.length;
+  show("summary");
+}
+
+$("start").onclick = () => startGame();
+$("again").onclick = () => startGame();
+$("to-setup").onclick = () => { show("setup"); renderSetup(); };
+
+/* Keep the screen awake while playing. */
+async function requestWakeLock() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch {}
+}
+function releaseWakeLock() { try { wakeLock?.release(); } catch {} wakeLock = null; }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && screen === "play") requestWakeLock(); });
+
+/* ---------- Boot (keeps a game in progress across page updates) ---------- */
+window.claude?.hot?.snapshot?.(() => ({ settings, game, screen }));
+
+async function start(data) {
+  loadSettings();
+  if (data && data.settings) settings = data.settings;
+  renderSetup();
+  await loadSpecies();
+  if (data && data.game && (data.screen === "play" || data.screen === "loading")) startGame(data.game);
+  else if (data && data.game && data.screen === "summary") { game = data.game; showSummary(game.results.length >= game.deck.length); }
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+</body>
+</html>
